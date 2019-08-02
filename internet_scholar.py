@@ -77,7 +77,7 @@ class InternetScholar:
         self.config_bucket = config_bucket
 
         self.prod = prod
-        if self.prof:
+        if self.prod:
             self.logger.info("Read configuration file for production from %s", self.config_bucket)
             self.config = self.read_dict_from_s3(bucket=self.config_bucket, key='prod.json')
         else:
@@ -116,7 +116,7 @@ class InternetScholar:
         return json.loads(file_content)
 
     def save_logs(self, recreate_log_table=True):
-        if not self.log_console:
+        if self.log_file:
             s3_filename = "log/name={}/creation_date={}/{}.csv".format(self.logger_name,
                                                                        datetime.utcnow().strftime("%Y-%m-%d"),
                                                                        datetime.utcnow().strftime("%Y%m%d-%H%M%S"))
@@ -130,10 +130,10 @@ class InternetScholar:
                 self.recreate_log_table_on_athena()
 
     def query_athena(self, query_string):
-        self.logger.info("Query to Athena database '%s'. Query string: %s", self.config['athena']['db'], query_string)
+        self.logger.info("Query to Athena database '%s'. Query string: %s", self.config['athena']['database'], query_string)
         execution = self.athena.start_query_execution(
             QueryString=query_string,
-            QueryExecutionContext={'Database': self.config['athena']['db']},
+            QueryExecutionContext={'Database': self.config['athena']['database']},
             ResultConfiguration={'OutputLocation': self.s3_temp})
         execution_id = execution['QueryExecutionId']
         self.logger.info("Execution ID: %s", execution_id)
@@ -158,7 +158,7 @@ class InternetScholar:
         if state != 'SUCCEEDED':
             self.athena_failures = self.athena_failures + 1
             logging.error("Error executing query. Athena failure: '%d', Current state: '%s', Response: %s",
-                          self.athena_failures, state, json.dumps(response))
+                          self.athena_failures, state, json.dumps(response, default=default))
             if self.athena_failures > self.MAX_ATHENA_ERRORS:
                 self.logger.info("Excedeed max number of consecutive Athena errors (%d errors): terminate",
                                  self.MAX_ATHENA_ERRORS)
@@ -210,8 +210,8 @@ class InternetScholar:
         except OSError:
             self.logger.info('Temporary ORC file does not exist')
             pass
-        subprocess.run([os.path.join(os.path.dirname(__file__), 'utils/jre1.8.0_221/bin/java'),
-                        '-jar', os.path.join(os.path.dirname(__file__), 'utils/orc-tools-1.5.6-uber.jar'),
+        subprocess.run(['java',
+                        '-jar', os.path.join(self.local_path, 'utils/orc-tools-1.5.6-uber.jar'),
                         'convert', filename_json,
                         '-o', filename_orc,
                         '-s', "".join(structure.split())],
@@ -252,7 +252,7 @@ class InternetScholar:
         self.upload_s3(self.config['s3']['columnar'],
                        local_filename, s3_filename, delete_original, partitions, compress)
 
-    def instantiate_ec2(ami="ami-06f2f779464715dc5", instance_type="t3a.nano",
+    def instantiate_ec2(self, ami="ami-06f2f779464715dc5", instance_type="t3a.nano",
                         size = 15, init_script="""#!/bin/bash\necho hi""", name="internet_scholar"):
         ec2 = boto3.resource('ec2')
         instance = ec2.create_instances(
@@ -263,6 +263,7 @@ class InternetScholar:
             KeyName="webscholar",
             InstanceInitiatedShutdownBehavior='terminate',
             UserData=init_script,
+            SecurityGroupIds=['launch-wizard-1'],
             BlockDeviceMappings=[
                 {
                     'DeviceName': '/dev/sda1',
@@ -273,7 +274,8 @@ class InternetScholar:
                 },
             ],
             TagSpecifications=[{'ResourceType': 'instance',
-                                'Tags': [{"Key": "Name", "Value": name}]}]
+                                'Tags': [{"Key": "Name", "Value": name}]}],
+            IamInstanceProfile={'Name': 'ec2_internetscholar'}
         )
 
     # @staticmethod
