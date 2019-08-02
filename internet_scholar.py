@@ -252,18 +252,18 @@ class InternetScholar:
         self.upload_s3(self.config['s3']['columnar'],
                        local_filename, s3_filename, delete_original, partitions, compress)
 
-    def instantiate_ec2(self, ami="ami-06f2f779464715dc5", instance_type="t3a.nano",
+    def instantiate_ec2(self, instance_type="t3a.nano",
                         size = 15, init_script="""#!/bin/bash\necho hi""", name="internet_scholar"):
         ec2 = boto3.resource('ec2')
         instance = ec2.create_instances(
-            ImageId=ami,
+            ImageId=self.credentials['aws']['ami'],
             InstanceType=instance_type,
             MinCount=1,
             MaxCount=1,
-            KeyName="webscholar",
+            KeyName=self.credentials['aws']['key_name'],
             InstanceInitiatedShutdownBehavior='terminate',
             UserData=init_script,
-            SecurityGroupIds=['launch-wizard-1'],
+            SecurityGroupIds=[self.credentials['aws']['security_group']],
             BlockDeviceMappings=[
                 {
                     'DeviceName': '/dev/sda1',
@@ -275,7 +275,7 @@ class InternetScholar:
             ],
             TagSpecifications=[{'ResourceType': 'instance',
                                 'Tags': [{"Key": "Name", "Value": name}]}],
-            IamInstanceProfile={'Name': 'ec2_internetscholar'}
+            IamInstanceProfile={'Name': self.credentials['aws']['iam']}
         )
 
     # @staticmethod
