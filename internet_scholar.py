@@ -256,8 +256,95 @@ class AthenaDatabase:
         s3.Bucket(self.s3_output).objects.filter(Prefix=self.s3_output_prefix).delete()
         return str(local_filepath)
 
+    def query_athena_and_get_result(self, query_string):
+        filename_s3 = self.query_athena_and_wait(query_string, delete_results=False)
+        s3 = boto3.resource('s3')
+        filepath_s3 = "{}/{}".format(self.s3_output_prefix, filename_s3)
+        content_object = s3.Object(self.s3_output, filepath_s3)
+        file_content = content_object.get()['Body'].read().decode('utf-8')
+        logging.info("Clean all files on bucket %s at prefix %s", self.s3_output, self.s3_output_prefix)
+        s3.Bucket(self.s3_output).objects.filter(Prefix=self.s3_output_prefix).delete()
+        memory_file = io.StringIO(file_content)
+        reader = csv.DictReader(memory_file)
+        rows = list(reader)
+        assert len(rows) == 1, "Invalid operation: query to Athena resulted %d rows" % len(rows)
+        return rows[0]
+
+    def table_exists(self, table_name):
+        filename_s3 = self.query_athena_and_wait(
+            query_string="show tables in {database} '{table_name}'".format(
+                database=self.database,
+                table_name=table_name),
+            delete_results=False)
+        s3 = boto3.resource('s3')
+        filepath_s3 = "{}/{}".format(self.s3_output_prefix, filename_s3)
+        content_object = s3.Object(self.s3_output, filepath_s3)
+        if content_object.content_length == 0:
+            exist = False
+        else:
+            exist = True
+        logging.info("Clean all files on bucket %s at prefix %s", self.s3_output, self.s3_output_prefix)
+        s3.Bucket(self.s3_output).objects.filter(Prefix=self.s3_output_prefix).delete()
+        return exist
+
     @staticmethod
     def __default(obj):
         if isinstance(obj, datetime):
             return {'_isoformat': obj.isoformat()}
         return super().default(obj)
+
+
+class URLExpander:
+    NOT_HTTP_HTTPS = 601
+    EXCEPTION_DURING_ACCESS = 600
+
+    def __init__(self, log_exceptions = True,
+                 user_agent='Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.0'):
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        self.user_agent = {'User-Agent': user_agent}
+
+    def expand_url(self, url):
+        expanded_url = []
+        if urlparse(url).scheme not in ['https', 'http']:
+            record = {'url': url,
+                      'validated_url': url,
+                      'status_code': self.NOT_HTTP_HTTPS,
+                      'content_length': 0,
+                      'created_at': str(datetime.now().timestamp()).replace('.', '')[0:13]
+                      }
+            expanded_url.append(record)
+        else:
+            try:
+                r = requests.head(url, headers=user_agent,
+                                  allow_redirects=True, verify=False, timeout=15)
+            except Exception as e:
+                if self.log_exceptions:
+                    logging.exception("Exception for %s", url)
+                record = {'url': url,
+                          'validated_url': url,
+                          'status_code': self.EXCEPTION_DURING_ACCESS,
+                          'content_length': 0,
+                          'created_at': str(datetime.now().timestamp()).replace('.', '')[0:13]
+                          }
+                expanded_url.append(record)
+            else:
+                record = {'url': r.url,
+                          'validated_url': r.url,
+                          'status_code': r.status_code,
+                          'content_type': r.headers.get('content-type', ''),
+                          'content_length': r.headers.get('content-length', 0),
+                          'created_at': str(datetime.now().timestamp()).replace('.', '')[0:13]
+                          }
+                expanded_url.append(record)
+
+                if len(r.history) != 0:
+                    for history_element in r.history:
+                        record = {'url': history_element.url,
+                                  'validated_url': r.url,
+                                  'status_code': history_element.status_code,
+                                  'content_type': history_element.headers.get('content-type', ''),
+                                  'content_length': history_element.headers.get('content-length', 0),
+                                  'created_at': str(datetime.now().timestamp()).replace('.', '')[0:13]
+                                  }
+                        expanded_url.append(record)
+        return expanded_url
