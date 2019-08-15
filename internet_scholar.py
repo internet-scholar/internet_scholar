@@ -16,6 +16,7 @@ from shutil import copyfileobj
 import subprocess
 import os
 from urllib.parse import urlparse
+import urllib3
 
 
 def compress(filename, delete_original=True, compress_level=9):
@@ -298,10 +299,11 @@ class URLExpander:
     NOT_HTTP_HTTPS = 601
     EXCEPTION_DURING_ACCESS = 600
 
-    def __init__(self, log_exceptions = True,
+    def __init__(self, log_exceptions=True,
                  user_agent='Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.0'):
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self.user_agent = {'User-Agent': user_agent}
+        self.log_exceptions = log_exceptions
 
     def expand_url(self, url):
         expanded_url = []
@@ -315,7 +317,7 @@ class URLExpander:
             expanded_url.append(record)
         else:
             try:
-                r = requests.head(url, headers=user_agent,
+                r = requests.head(url, headers=self.user_agent,
                                   allow_redirects=True, verify=False, timeout=15)
             except Exception as e:
                 if self.log_exceptions:
