@@ -13,7 +13,6 @@ import re
 import uuid
 import bz2
 from shutil import copyfileobj
-import subprocess
 import os
 from urllib.parse import urlparse
 import urllib3
@@ -29,25 +28,6 @@ def compress(filename, delete_original=True, compress_level=9):
     if delete_original:
         os.remove(filename)
     return filename_bz2
-
-
-def generate_orc_file(filename_json, filename_orc, structure):
-    logging.info('Remove temporary ORC file if exists: %s', filename_orc)
-    # if there is already an ORC file, delete it. Otherwise orc-tools will issue an error message
-    try:
-        os.remove(filename_orc)
-    except OSError:
-        logging.info('Temporary ORC file does not exist')
-        pass
-
-    path_orc_tools = Path(Path(__file__).parent, 'tmp', 'orc-tools-1.5.6-uber.jar')
-
-    subprocess.run(['java',
-                    '-jar', str(path_orc_tools),
-                    'convert', filename_json,
-                    '-o', filename_orc,
-                    '-s', "".join(structure.split())],
-                   check=True)
 
 
 def instantiate_ec2(ami, key_name, security_group, iam, instance_type="t3a.nano",
