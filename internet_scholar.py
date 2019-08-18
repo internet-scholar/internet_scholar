@@ -310,22 +310,30 @@ class URLExpander:
                           }
                 expanded_url.append(record)
             else:
+                try:
+                    content_length = int(r.headers.get('content-length', "0").strip())
+                except ValueError:
+                    content_length = 0
                 record = {'url': r.url,
                           'validated_url': r.url,
                           'status_code': r.status_code,
                           'content_type': r.headers.get('content-type', ''),
-                          'content_length': r.headers.get('content-length', 0),
+                          'content_length': content_length,
                           'created_at': str(datetime.now().timestamp()).replace('.', '')[0:13]
                           }
                 expanded_url.append(record)
 
                 if len(r.history) != 0:
                     for history_element in r.history:
+                        try:
+                            content_length = int(history_element.headers.get('content-length', "0").strip())
+                        except ValueError:
+                            content_length = 0
                         record = {'url': history_element.url,
                                   'validated_url': r.url,
                                   'status_code': history_element.status_code,
                                   'content_type': history_element.headers.get('content-type', ''),
-                                  'content_length': history_element.headers.get('content-length', 0),
+                                  'content_length': content_length,
                                   'created_at': str(datetime.now().timestamp()).replace('.', '')[0:13]
                                   }
                         expanded_url.append(record)
