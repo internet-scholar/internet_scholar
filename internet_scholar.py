@@ -70,6 +70,11 @@ def read_dict_from_s3(bucket, key):
     return json.loads(file_content)
 
 
+def read_dict_from_url(url):
+    page = requests.get(url)
+    return json.loads(page.text)
+
+
 class AthenaLogger:
     __CREATE_ATHENA_TABLE = """
     CREATE EXTERNAL TABLE log (
@@ -207,7 +212,7 @@ class AthenaDatabase:
                 "Exceeded max number of consecutive Athena errors (%d errors): terminate".format(self.MAX_ATHENA_ERRORS)
             logging.info("Wait five seconds before trying the same Athena query again")
             time.sleep(5)
-            return self.query_athena_and_wait(query_string)
+            return self.query_athena_and_wait(query_string, delete_results=delete_results)
         else:
             self.athena_failures = 0
             logging.info("Query succeeded: %s", json.dumps(response, default=self.__default))
