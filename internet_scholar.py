@@ -166,7 +166,7 @@ class AthenaLogger:
 
 
 class AthenaDatabase:
-    ATHENA_TIMEOUT = 120
+    ATHENA_TIMEOUT = 300
     MAX_ATHENA_ERRORS = 5
 
     def __init__(self, database, s3_output):
