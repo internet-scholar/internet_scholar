@@ -18,6 +18,16 @@ from urllib.parse import urlparse
 import urllib3
 
 
+def decompress(filename, delete_original=True):
+    new_filepath = filename[:-4]
+    with bz2.BZ2File(filename, 'rb') as input_file:
+        with open(new_filepath, 'wb') as output_file:
+            copyfileobj(input_file, output_file)
+    if delete_original:
+        os.remove(filename)
+    return new_filepath
+
+
 def compress(filename, delete_original=True, compress_level=9):
     filename_bz2 = Path(Path(__file__).parent, 'tmp', "{}.bz2".format(filename))
     logging.info("Compress file %s. New file: %s. Compression level: %d. Delete original? %s",
