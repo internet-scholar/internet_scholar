@@ -205,8 +205,9 @@ class AthenaDatabase:
         state = 'RUNNING'
         elapsed_time = 0
         response = None
-        while elapsed_time <= self.ATHENA_TIMEOUT and state in ['RUNNING']:
-            elapsed_time = elapsed_time + 1
+        while elapsed_time <= self.ATHENA_TIMEOUT and state in ['RUNNING', 'QUEUED']:
+            if state in ['RUNNING']:
+                elapsed_time = elapsed_time + 1
             response = self.athena.get_query_execution(QueryExecutionId=execution_id)
             state = response.get('QueryExecution', {}).get('Status', {}).get('State')
             if state not in ['SUCCEEDED', 'FAILED']:
