@@ -16,6 +16,7 @@ from shutil import copyfileobj
 import os
 from urllib.parse import urlparse
 import urllib3
+import sqlite3
 
 
 def decompress(filename, delete_original=True):
@@ -141,7 +142,7 @@ class AthenaLogger:
                                    '{app_name}-{timestamp}.log'.format(
                                        app_name=app_name, timestamp=datetime.utcnow().strftime("%Y%m%d-%H%M%S")))
         try:
-            response = requests.get('http://169.254.169.254/latest/meta-data/instance-id')
+            response = requests.get('http://169.254.169.254/latest/meta-data/instance-id', timeout=3)
             self.machine = response.text
         except requests.exceptions.ConnectionError:
             self.machine = "dev_machine"
@@ -354,3 +355,73 @@ class URLExpander:
                                   }
                         expanded_url.append(record)
         return expanded_url
+
+
+class SqliteAWS:
+    def __init__(self, database, s3_admin, s3_data, athena_db):
+        self.database = database
+        self.athena_db = athena_db
+        self.s3_admin = s3_admin
+        self.s3_data = s3_data
+
+    def convert_s3_csv_to_sqlite(self, s3_path):
+        s3 = boto3.resource('s3')
+        compressed_file = 's3_file.csv.bz2'
+        s3.Bucket(self.s3_data).download_file(s3_path, compressed_file)
+        temporary_file = decompress(filename=compressed_file)
+        table_name = s3_path.split('/')[0]
+        self.convert_csv_to_sqlite(table_name=table_name, csv_path=temporary_file)
+
+    def convert_sqlite_to_s3_csv(self, s3_path, order_by=None):
+        table_name = s3_path.split('/')[0]
+        self.database.row_factory = sqlite3.Row
+        query = 'SELECT * FROM {table_name}'.format(table_name=table_name)
+        if order_by is not None:
+            query = '{query} order by {order_by}'.format(query=query, order_by=order_by)
+        with open('./temp_file.csv', 'w') as csv_writer:
+            first_record = True
+            cursor_select = self.database.execute(query)
+            for record in cursor_select:
+                if first_record:
+                    writer = csv.DictWriter(
+                        csv_writer,
+                        fieldnames=record.keys(),
+                        dialect='unix'
+                    )
+                    writer.writeheader()
+                    first_record = False
+                record_csv = dict()
+                for key in record.keys():
+                    record_csv[key] = record[key]
+                writer.writerow(record_csv)
+        compressed_file = compress('./temp_file.csv')
+        s3 = boto3.resource('s3')
+        s3.Bucket(self.s3_data).upload_file(str(compressed_file), s3_path)
+        os.remove(str(compressed_file))
+
+    def convert_csv_to_sqlite(self, table_name, csv_path, delete_csv=True):
+        with open(csv_path, newline='', encoding="utf8") as csv_file:
+            csv_reader = csv.DictReader(csv_file)
+            field_names = None
+            insert_sql = ''
+            for record in csv_reader:
+                if field_names is None:
+                    field_names = record.keys()
+                    create_sql = 'CREATE TABLE {table_name} ' \
+                                 '({field_names})'.format(table_name=table_name,
+                                                          field_names=', '.join([i + ' TEXT' for i in field_names]))
+                    self.database.execute(create_sql)
+                    insert_sql = 'INSERT INTO {table_name} ' \
+                                 '({field_names}) values ' \
+                                 '({question_marks})'.format(table_name=table_name,
+                                                             field_names=', '.join(field_names),
+                                                             question_marks=', '.join(['?' for i in field_names]))
+                self.database.execute(insert_sql, tuple(record.values()))
+        self.database.commit()
+        if delete_csv:
+            os.remove(csv_path)
+
+    def convert_athena_query_to_sqlite(self, table_name, query):
+        athena = AthenaDatabase(database=self.athena_db, s3_output=self.s3_admin)
+        query_result = athena.query_athena_and_download(query_string=query, filename='query_result.csv')
+        self.convert_csv_to_sqlite(table_name=table_name, csv_path=query_result)
