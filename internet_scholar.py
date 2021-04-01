@@ -1,5 +1,6 @@
 import json
 import boto3
+import botocore
 import csv
 import io
 import logging
@@ -17,6 +18,8 @@ import os
 from urllib.parse import urlparse
 import urllib3
 import sqlite3
+from collections import OrderedDict
+import shutil
 
 
 def decompress(filename, delete_original=True):
@@ -69,21 +72,74 @@ def instantiate_ec2(ami, key_name, security_group, iam, instance_type="t3a.nano"
     return instance
 
 
-def read_dict_from_s3_url(url):
+def s3_key_exists(bucket, key):
+    s3 = boto3.resource('s3')
+    try:
+        s3.Object(bucket, key).load()
+    except botocore.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == "NoSuchKey":
+            return False
+        else:
+            raise
+    else:
+        return True
+
+
+def read_dict_from_s3_url(url, compressed = False):
     url_object = urlparse(url, allow_fragments=False)
-    return read_dict_from_s3(bucket=url_object.netloc, key=url_object.path.lstrip('/'))
+    return read_dict_from_s3(bucket=url_object.netloc, key=url_object.path.lstrip('/'), compressed=compressed)
 
 
-def read_dict_from_s3(bucket, key):
+def read_dict_from_s3(bucket, key, compressed = False):
     s3 = boto3.resource('s3')
     content_object = s3.Object(bucket, key)
-    file_content = content_object.get()['Body'].read().decode('utf-8')
-    return json.loads(file_content)
+    file_content = content_object.get()['Body'].read()
+    if compressed:
+        file_content = bz2.decompress(file_content)
+    return json.loads(file_content.decode('utf-8'))
 
 
 def read_dict_from_url(url):
     page = requests.get(url)
     return json.loads(page.text)
+
+
+def save_data_in_s3(content, s3_bucket, s3_key, prefix=None, partitions=None, compress_file=True):
+    if partitions is not None:
+        if not isinstance(partitions, OrderedDict):
+            raise TypeError("partitions must be an OrderedDict")
+        partition_string = ""
+        for key, value in partitions.items():
+            partition_string = partition_string + f"{key}={value}/"
+
+    temp_dir = uuid.uuid4()
+    Path(f'./{temp_dir}/').parent.mkdir(parents=True, exist_ok=True)
+    try:
+        filename = f"./{temp_dir}/{s3_key.strip('.bz2')}"
+        if (isinstance(content, list)):
+            with open(filename, 'w', encoding="utf-8") as csv_file:
+                fieldnames = list(content[0].keys())
+                writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                for record in content:
+                    writer.writerow(record)
+        elif (isinstance(content, dict)):
+            json_string = json.dumps(content)
+            with open(filename, 'w', encoding="utf-8") as json_file:
+                json_file.write(json_string)
+        else:
+            raise TypeError("content must be dict or list")
+        if compress_file:
+            filename = str(compress(filename))
+        s3_path = ""
+        if prefix is not None:
+            s3_path = prefix + "/"
+        if partitions is not None:
+            s3_path = s3_path + partition_string
+        s3_path = s3_path + os.path.basename(filename)
+        s3 = boto3.resource('s3')
+        s3.Bucket(self.s3_bucket).upload_file(filename, s3_path)
+    finally:
+        shutil.rmtree("./{temp_dir}")
 
 
 class AthenaLogger:
