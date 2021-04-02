@@ -45,31 +45,36 @@ def compress(filename, delete_original=True, compress_level=9):
 
 
 def instantiate_ec2(ami, key_name, security_group, iam, instance_type="t3a.nano",
-                    size=15, init_script="""#!/bin/bash\necho hi""", name="internet_scholar"):
-    ec2 = boto3.resource('ec2')
-    instance = ec2.create_instances(
-        ImageId=ami,
-        InstanceType=instance_type,
-        MinCount=1,
-        MaxCount=1,
-        KeyName=key_name,
-        InstanceInitiatedShutdownBehavior='terminate',
-        UserData=init_script,
-        SecurityGroupIds=[security_group],
-        BlockDeviceMappings=[
-            {
-                'DeviceName': '/dev/sda1',
-                'Ebs': {
-                    'DeleteOnTermination': True,
-                    'VolumeSize': size
-                }
-            },
-        ],
-        TagSpecifications=[{'ResourceType': 'instance',
-                            'Tags': [{"Key": "Name", "Value": name}]}],
-        IamInstanceProfile={'Name': iam}
-    )
-    return instance
+                    size=15, init_script="""#!/bin/bash\necho hi""", name="internet_scholar", simulation=False):
+    if simulation:
+        init_script = init_script.replace("sudo shutdown -h now", "")
+        save_string_local_file('./init_test.sh', init_script)
+        return None
+    else:
+        ec2 = boto3.resource('ec2')
+        instance = ec2.create_instances(
+            ImageId=ami,
+            InstanceType=instance_type,
+            MinCount=1,
+            MaxCount=1,
+            KeyName=key_name,
+            InstanceInitiatedShutdownBehavior='terminate',
+            UserData=init_script,
+            SecurityGroupIds=[security_group],
+            BlockDeviceMappings=[
+                {
+                    'DeviceName': '/dev/sda1',
+                    'Ebs': {
+                        'DeleteOnTermination': True,
+                        'VolumeSize': size
+                    }
+                },
+            ],
+            TagSpecifications=[{'ResourceType': 'instance',
+                                'Tags': [{"Key": "Name", "Value": name}]}],
+            IamInstanceProfile={'Name': iam}
+        )
+        return instance
 
 
 def s3_key_exists(bucket, key):
@@ -83,6 +88,11 @@ def s3_key_exists(bucket, key):
             raise
     else:
         return True
+
+
+def save_string_local_file(filename, content):
+    with open(filename, 'w', encoding="utf-8") as content_file:
+        content_file.write(content)
 
 
 def read_dict_from_s3_url(url, compressed = False):
