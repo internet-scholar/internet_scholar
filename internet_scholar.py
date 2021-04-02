@@ -44,37 +44,45 @@ def compress(filename, delete_original=True, compress_level=9):
     return filename_bz2
 
 
-def instantiate_ec2(key_name, security_group, iam, ami="ami-0ca5c3bd5a268e7db", instance_type="t3a.nano",
-                    size=8, init_script="""#!/bin/bash\necho hi""", name="internet_scholar", simulation=False):
-    if simulation:
-        init_script = init_script.replace("sudo shutdown -h now", "echo End of Script")
-        save_string_local_file('./init_test.sh', init_script)
-        return None
-    else:
-        ec2 = boto3.resource('ec2')
-        instance = ec2.create_instances(
-            ImageId=ami,
-            InstanceType=instance_type,
-            MinCount=1,
-            MaxCount=1,
-            KeyName=key_name,
-            InstanceInitiatedShutdownBehavior='terminate',
-            UserData=init_script,
-            SecurityGroupIds=[security_group],
-            BlockDeviceMappings=[
-                {
-                    'DeviceName': '/dev/sda1',
-                    'Ebs': {
-                        'DeleteOnTermination': True,
-                        'VolumeSize': size
-                    }
-                },
-            ],
-            TagSpecifications=[{'ResourceType': 'instance',
-                                'Tags': [{"Key": "Name", "Value": name}]}],
-            IamInstanceProfile={'Name': iam}
-        )
-        return instance
+BASE_SCRIPT_NEW_INSTANCE = """#!/bin/bash
+cd /home/ubuntu
+su ubuntu -c 'mkdir .aws'
+su ubuntu -c 'printf "[default]\\nregion={region}" > /home/ubuntu/.aws/config'
+su ubuntu -c 'wget {init_script} -o {new_name}'
+su ubuntu -c 'chmod +x {new_name}'
+su ubuntu -c "screen -dmS internet_scholar sh -c './{new_name} {parameters}; exec bash'"
+"""
+
+
+def instantiate_ec2(key_name, security_group, iam, init_script,
+                    ami="ami-0ca5c3bd5a268e7db", instance_type="t3a.nano",
+                    size=8, parameters="", region="us-west-2", name="internet_scholar"):
+    ec2 = boto3.resource('ec2')
+    new_name = f"{uuid.uuid4()}.sh"
+    instance = ec2.create_instances(
+        ImageId=ami,
+        InstanceType=instance_type,
+        MinCount=1,
+        MaxCount=1,
+        KeyName=key_name,
+        InstanceInitiatedShutdownBehavior='terminate',
+        UserData=BASE_SCRIPT_NEW_INSTANCE.format(region=region, init_script=init_script,
+                                                 new_name=new_name, parameters=parameters),
+        SecurityGroupIds=[security_group],
+        BlockDeviceMappings=[
+            {
+                'DeviceName': '/dev/sda1',
+                'Ebs': {
+                    'DeleteOnTermination': True,
+                    'VolumeSize': size
+                }
+            },
+        ],
+        TagSpecifications=[{'ResourceType': 'instance',
+                            'Tags': [{"Key": "Name", "Value": name}]}],
+        IamInstanceProfile={'Name': iam}
+    )
+    return instance
 
 
 def s3_key_exists(bucket, key):
@@ -82,7 +90,7 @@ def s3_key_exists(bucket, key):
     try:
         s3.Object(bucket, key).load()
     except botocore.exceptions.ClientError as e:
-        if e.response['Error']['Code'] == "NoSuchKey":
+        if e.response['Error']['Code'] == "404":
             return False
         else:
             raise
