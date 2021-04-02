@@ -44,8 +44,8 @@ def compress(filename, delete_original=True, compress_level=9):
     return filename_bz2
 
 
-def instantiate_ec2(ami, key_name, security_group, iam, instance_type="t3a.nano",
-                    size=15, init_script="""#!/bin/bash\necho hi""", name="internet_scholar", simulation=False):
+def instantiate_ec2(key_name, security_group, iam, ami="ami-0ca5c3bd5a268e7db", instance_type="t3a.nano",
+                    size=8, init_script="""#!/bin/bash\necho hi""", name="internet_scholar", simulation=False):
     if simulation:
         init_script = init_script.replace("sudo shutdown -h now", "echo End of Script")
         save_string_local_file('./init_test.sh', init_script)
