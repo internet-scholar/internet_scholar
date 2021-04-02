@@ -47,7 +47,7 @@ def compress(filename, delete_original=True, compress_level=9):
 def instantiate_ec2(ami, key_name, security_group, iam, instance_type="t3a.nano",
                     size=15, init_script="""#!/bin/bash\necho hi""", name="internet_scholar", simulation=False):
     if simulation:
-        init_script = init_script.replace("sudo shutdown -h now", "")
+        init_script = init_script.replace("sudo shutdown -h now", "echo Hey!")
         save_string_local_file('./init_test.sh', init_script)
         return None
     else:
