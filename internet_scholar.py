@@ -33,7 +33,7 @@ def decompress(filename, delete_original=True):
 
 
 def compress(filename, delete_original=True, compress_level=9):
-    filename_bz2 = Path(Path(__file__).parent, 'tmp', "{}.bz2".format(filename))
+    filename_bz2 = Path(Path(__file__).parent, 'tmp', "{}.bz2".format(os.path.basename(filename)))
     logging.info("Compress file %s. New file: %s. Compression level: %d. Delete original? %s",
                  filename, filename_bz2, compress_level, delete_original)
     with open(filename, 'rb') as input_file:
