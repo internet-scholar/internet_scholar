@@ -147,7 +147,7 @@ def save_data_in_s3(content, s3_bucket, s3_key, prefix=None, partitions=None, co
             s3_path = s3_path + partition_string
         s3_path = s3_path + os.path.basename(filename)
         s3 = boto3.resource('s3')
-        s3.Bucket(self.s3_bucket).upload_file(filename, s3_path)
+        s3.Bucket(s3_bucket).upload_file(filename, s3_path)
     finally:
         shutil.rmtree(f"./{temp_dir}")
 
