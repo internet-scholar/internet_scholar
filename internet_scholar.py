@@ -111,11 +111,17 @@ def read_dict_from_s3_url(url, compressed = False):
 
 def read_dict_from_s3(bucket, key, compressed = False):
     s3 = boto3.resource('s3')
-    content_object = s3.Object(bucket, key)
-    file_content = content_object.get()['Body'].read()
-    if compressed:
-        file_content = bz2.decompress(file_content)
-    return json.loads(file_content.decode('utf-8'))
+    try:
+        content_object = s3.Object(bucket, key)
+        file_content = content_object.get()['Body'].read()
+        if compressed:
+            file_content = bz2.decompress(file_content)
+        return json.loads(file_content.decode('utf-8'))
+    except botocore.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == "NoSuchKey":
+            return None
+        else:
+            raise
 
 
 def read_dict_from_url(url):
