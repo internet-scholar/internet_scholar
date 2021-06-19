@@ -156,7 +156,7 @@ def save_data_in_s3(content, s3_bucket, s3_key, prefix=None, partitions=None, co
         if (isinstance(content, list)):
             with open(filename, 'w', encoding="utf-8") as csv_file:
                 fieldnames = list(content[0].keys())
-                writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                writer = csv.DictWriter(csv_file, fieldnames=fieldnames, dialect='unix')
                 for record in content:
                     writer.writerow(record)
         elif (isinstance(content, dict)):
