@@ -86,6 +86,18 @@ def instantiate_ec2(key_name, security_group, iam, init_script,
     return instance
 
 
+def s3_prefix_exists(bucket, prefix):
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket(bucket)
+    return bool(list(bucket.objects.filter(Prefix=prefix)))
+
+
+def delete_s3_objects_by_prefix(bucket, prefix):
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket(bucket)
+    bucket.objects.filter(Prefix=prefix).delete()
+
+
 def s3_key_exists(bucket, key):
     s3 = boto3.resource('s3')
     try:
@@ -165,6 +177,12 @@ def save_data_in_s3(content, s3_bucket, s3_key, prefix=None, partitions=None, co
         s3.Bucket(s3_bucket).upload_file(filename, s3_path)
     finally:
         shutil.rmtree(f"./{temp_dir}")
+
+
+def move_data_in_s3(bucket_name, origin, destination):
+    s3_resource = boto3.resource('s3')
+    s3_resource.Object(bucket_name, destination).copy_from(CopySource= {'Bucket': bucket_name, 'Key': origin})
+    s3_resource.Object(bucket_name, origin).delete()
 
 
 class AthenaLogger:
