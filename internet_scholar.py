@@ -111,6 +111,20 @@ def s3_key_exists(bucket, key):
         return True
 
 
+def s3_file_size_in_bytes(bucket, key):
+    s3 = boto3.resource('s3')
+    object = s3.Object(bucket, key)
+    file_size = 0
+    try:
+        file_size = object.content_length
+    except botocore.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == "404":
+            file_size = 0
+        else:
+            raise
+    return file_size
+
+
 def save_string_local_file(filename, content):
     with open(filename, 'w', encoding="utf-8") as content_file:
         content_file.write(content)
