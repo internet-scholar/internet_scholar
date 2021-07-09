@@ -294,7 +294,18 @@ class AthenaDatabase:
     MAX_ATHENA_ERRORS = 5
 
     def __init__(self, database, s3_output):
-        self.athena = boto3.client('athena')
+        s3_client = boto3.client('s3')
+        s3_region_response = s3_client.get_bucket_location(Bucket=s3_output)
+        if s3_region_response is None:
+            logging.info(f"Bucket {s3_output} probably does not exist or user is not allowed to access it.")
+            self.athena = boto3.client('athena')
+        else:
+            s3_region = s3_region_response.get('LocationConstraint', '')
+            if s3_region == '':
+                logging.info(f"Athena region {s3_region} is an empty string.")
+                self.athena = boto3.client('athena')
+            else:
+                self.athena = boto3.client('athena', region_name=s3_region)
         self.database = database
         self.s3_output = s3_output
         self.s3_output_prefix = "tmp/athena/{}".format(uuid.uuid4().hex)
